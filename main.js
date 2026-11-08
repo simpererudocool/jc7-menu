@@ -65,6 +65,27 @@ local function initializeScript()
 	loadLibrary()
 	local JC7 = getgenv().jc7
 
+	-- Loaded from a URL there is no FF2 chunk above this one, so every binding it
+	-- expects has to degrade instead of throwing. Inline, these pick up the real values.
+	local Data = Data or {}
+	local onToggle = type(onToggle) == "function" and onToggle or function() end
+	local onToggle2 = type(onToggle2) == "function" and onToggle2 or function() end
+
+	---Fire the catch input. Touch has no mouse button, which is why the mobile button exists.
+	---If the game exposes its own catch function, put it first in this chain.
+	local function catchBall()
+		if type(CatchBall) == "function" then
+			return CatchBall()
+		end
+		if type(mouse1click) == "function" then
+			return mouse1click()
+		end
+		pcall(function()
+			local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+			game:GetService("VirtualUser"):ClickButton1(viewport * 0.5)
+		end)
+	end
+
 	local window = JC7.new({
 		Title = "jc7",
 		Subtitle = "ff2 - place " .. tostring(game.PlaceId),
@@ -317,6 +338,21 @@ local function initializeScript()
 		end,
 	}
 
+	catching:Section("Touch")
+	catching:Paragraph{
+		Text = "Auto Catch taps for you. Use the floating CATCH button for a manual grab.",
+	}
+	local catchButton = window:ActionButton({
+		Text = "CATCH",
+		Callback = catchBall,
+	})
+	if not catchButton then
+		catching:Button{
+			Text = "Catch Ball",
+			Callback = catchBall,
+		}
+	end
+
 	-- Automatics.
 	automatics:Section("Ball")
 	automatics:Toggle{
@@ -504,10 +540,26 @@ local function initializeScript()
 	}
 
 	getgenv().jc7Menu = window
+
+	-- One line of proof: how much got built, and which parent accepted the ScreenGui.
+	print(string.format("jc7: %d tabs built under %s", #window.tabs, tostring(window.gui.Parent)))
+
 	return window
 end
 
-profiler.run("jc7_InitializeScript", function()
+-- A foreign shared.Profiler can throw here, or swallow the callback and return clean.
+-- Both leave you with no window and no warning, so prove the entry point actually ran.
+local entered = false
+
+local function entry()
+	entered = true
 	return xpcall(initializeScript, onInitializeError)
+end
+
+local scheduled = pcall(function()
+	profiler.run("jc7_InitializeScript", entry)
 end)
 
+if not scheduled or not entered then
+	entry()
+end
